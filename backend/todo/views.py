@@ -1,4 +1,5 @@
 
+import csv
 from rest_framework import generics, filters
 from .models import Todo
 from .serializers import TodoSerializer
@@ -7,7 +8,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .utils.csv_import import import_csv
-from django.http import JsonResponse, HttpResponse
+from django.http import HttpResponse, JsonResponse
+from rest_framework.parsers import MultiPartParser, FormParser  
 
 class TodoList(generics.ListCreateAPIView):
     queryset = Todo.objects.all().order_by('-created_at')
@@ -30,6 +32,8 @@ class TodoList(generics.ListCreateAPIView):
 
 
 class CSVImportView(APIView):
+    parser_classes = [MultiPartParser, FormParser]  # ✅ required to handle files
+
     def post(self, request):
         file = request.FILES.get('file')
         if not file:
@@ -39,7 +43,6 @@ class CSVImportView(APIView):
             return Response({'success': 'Todos imported successfully'})
         except Exception as e:
             return Response({'error': str(e)}, status=400)
-
 class ExportTodosView(APIView):
     def get(self, request, format=None):
         todos = Todo.objects.all()

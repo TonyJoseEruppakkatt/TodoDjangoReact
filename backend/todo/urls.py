@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import TodoList, TodoDetail, CSVImportView, ExportTodosView
+from .views import CSVImportView
 
 
 urlpatterns = [
@@ -9,5 +10,7 @@ urlpatterns = [
     path('api/import-csv/', CSVImportView.as_view(), name='import-csv'),
     path('todos/export/<str:format>/', ExportTodosView.as_view()),  # json, csv, raw, sql
     path('api/todos/<int:pk>/', TodoDetail.as_view(), name='todo-detail'),
+    path('api/todos/', TodoList.as_view()),
+
 
 ]
