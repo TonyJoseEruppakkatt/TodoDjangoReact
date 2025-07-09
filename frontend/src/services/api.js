@@ -31,10 +31,14 @@ export const updateTodo = (id, updatedData) =>
   axios.put(`${API_BASE_URL}${id}/`, updatedData);
 
 // ✅ Import CSV
-export const importCSV = (formData) =>
-  axios.post(`${API_BASE_URL}import/`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+const API_URL = 'http://localhost:8000/api/';
+
+export const importCSV = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  return await axios.post(`${API_URL}import-csv/`, formData);
+};
 
 // ✅ Export Todos
 export const exportTodos = (format) =>

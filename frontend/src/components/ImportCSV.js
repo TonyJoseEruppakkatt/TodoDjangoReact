@@ -1,52 +1,33 @@
-import React, { useState } from 'react';
-import { Button, Form } from 'react-bootstrap';
+import React from 'react';
 import { importCSV } from '../services/api';
-
 import { toast } from 'react-toastify';
 
 const ImportCSV = ({ onImport }) => {
-  const [file, setFile] = useState(null);
-
-  const handleFileChange = e => {
-    setFile(e.target.files[0]);
-  };
-
-  const handleImport = async () => {
-    if (!file) {
-      toast.warning('Please select a CSV file to upload.');
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
     try {
-      await axios.post('/todos/import-csv/', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      await importCSV(file);
       toast.success('CSV imported successfully!');
-      onImport(); // Refresh the todo list
-      setFile(null);
+      onImport(); // Refresh todos
     } catch (error) {
-      console.error(error);
-      toast.error('Failed to import CSV.');
+      console.error('CSV Import Error:', error.response?.data || error.message);
+      toast.error('Failed to import CSV');
     }
   };
 
   return (
-    <Form className="d-flex mb-3 mx-2 align-items-center">
-      <Form.Control
+    <div className="mb-3">
+      <label htmlFor="csvUpload">Import CSV</label>
+      <input
         type="file"
         accept=".csv"
+        id="csvUpload"
+        className="form-control"
         onChange={handleFileChange}
-        className="me-2"
       />
-      <Button onClick={handleImport} variant="primary">
-        Import CSV
-      </Button>
-    </Form>
+    </div>
   );
 };
 
