@@ -1,38 +1,47 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
-const TodoList = () => {
-    const [todos, setTodos] = useState([]);
+const TodoList = ({ todos, onDelete, onUpdate }) => {
+  const handleToggleComplete = (todo) => {
+    const updatedTodo = { ...todo, completed: !todo.completed };
+    onUpdate(todo.id, updatedTodo);
+  };
 
-    useEffect(() => {
-        fetch('/api/todos/')
-            .then(response => response.json())
-            .then(data => setTodos(data))
-            .catch(error => console.error('Error fetching todos:', error));
-    }, []);
-
-    const handleDelete = (id) => {
-        fetch(`/api/todos/${id}/`, {
-            method: 'DELETE',
-        })
-        .then(() => {
-            setTodos(todos.filter(todo => todo.id !== id));
-        })
-        .catch(error => console.error('Error deleting todo:', error));
-    };
-
-    return (
-        <div>
-            <h1>Todo List</h1>
-            <ul>
-                {todos.map(todo => (
-                    <li key={todo.id}>
-                        {todo.title}
-                        <button onClick={() => handleDelete(todo.id)}>Delete</button>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    );
+  return (
+    <ul className="list-group mb-3">
+      {todos.length === 0 ? (
+        <li className="list-group-item text-center">No tasks found.</li>
+      ) : (
+        todos.map(todo => (
+          <li
+            key={todo.id}
+            className="list-group-item d-flex justify-content-between align-items-center"
+          >
+            <div>
+              <strong>{todo.title}</strong><br />
+              <small>Due: {todo.due_date}</small>
+            </div>
+            <div>
+              <span className={`badge ${todo.completed ? 'bg-success' : 'bg-warning'} me-2`}>
+                {todo.completed ? 'Completed' : 'Pending'}
+              </span>
+              <button
+                className="btn btn-sm btn-outline-success me-2"
+                onClick={() => handleToggleComplete(todo)}
+              >
+                {todo.completed ? 'Undo' : 'Mark as Done'}
+              </button>
+              <button
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => onDelete(todo)}
+              >
+                Delete
+              </button>
+            </div>
+          </li>
+        ))
+      )}
+    </ul>
+  );
 };
 
 export default TodoList;
