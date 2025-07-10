@@ -1,5 +1,49 @@
 import axios from 'axios';
 
+// --- Auth Helpers ---
+const TOKEN_KEY = 'auth_token';
+
+export function setToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function removeToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+export async function loginUser(credentials) {
+  const response = await axios.post('http://localhost:8000/api/login/', credentials);
+  setToken(response.data.token);
+  return response.data;
+}
+
+export async function signupUser(credentials) {
+  const response = await axios.post('http://localhost:8000/api/signup/', credentials);
+  return response.data;
+}
+
+export async function logoutUser() {
+  await axios.post('http://localhost:8000/api/logout/', {}, {
+    headers: { Authorization: `Token ${getToken()}` }
+  });
+  removeToken();
+}
+
+// Axios request interceptor to add token
+axios.interceptors.request.use(
+  config => {
+    const token = getToken();
+    if (token) {
+      config.headers['Authorization'] = `Token ${token}`;
+    }
+    return config;
+  },
+  error => Promise.reject(error)
+);
+
+
 const API_BASE_URL = 'http://localhost:8000/api/todos/';
 const API_BASE = 'http://localhost:8000/api';
 

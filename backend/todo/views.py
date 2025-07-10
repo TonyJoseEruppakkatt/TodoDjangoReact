@@ -10,6 +10,15 @@ from rest_framework import status
 from .utils.csv_import import import_csv
 from django.http import HttpResponse, JsonResponse
 from rest_framework.parsers import MultiPartParser, FormParser  
+from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.authtoken.models import Token
+from django.contrib.auth import logout as django_logout
+from rest_framework.permissions import AllowAny
+from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError as DRFValidationError
+
 
 class TodoList(generics.ListCreateAPIView):
     queryset = Todo.objects.all().order_by('-created_at')
@@ -43,6 +52,40 @@ class CSVImportView(APIView):
             return Response({'success': 'Todos imported successfully'})
         except Exception as e:
             return Response({'error': str(e)}, status=400)
+class SignupView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+        if not username or not password:
+            return Response({'error': 'Username and password required.'}, status=400)
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Username already exists.'}, status=400)
+        try:
+            validate_password(password)
+        except (DjangoValidationError, DRFValidationError) as e:
+            # e.messages is always a list; join for display or return as-is
+            return Response({'error': e.messages}, status=400)
+        user = User.objects.create_user(username=username, password=password)
+        return Response({'success': 'User created successfully.'}, status=201)
+
+class LoginView(ObtainAuthToken):
+    permission_classes = [AllowAny]
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        token = Token.objects.get(key=response.data['token'])
+        return Response({'token': token.key, 'user_id': token.user_id, 'username': token.user.username})
+
+class LogoutView(APIView):
+    def post(self, request):
+        if not request.user.is_authenticated:
+            return Response({'error': 'User is not authenticated.'}, status=status.HTTP_401_UNAUTHORIZED)
+        # Only delete token if it exists
+        if hasattr(request.user, 'auth_token'):
+            request.user.auth_token.delete()
+        django_logout(request)
+        return Response({'success': 'Logged out successfully.'}, status=status.HTTP_200_OK)
+
 class ExportTodosView(APIView):
     def get(self, request, format=None):
         todos = Todo.objects.all()
