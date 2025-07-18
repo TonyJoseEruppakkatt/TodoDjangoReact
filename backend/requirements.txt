@@ -1,0 +1,6 @@
+Django>=3.2,<4.0
+djangorestframework>=3.12,<4.0
+corsheaders>=3.10,<4.0
+django-environ>=0.4,<1.0
+psycopg2-binary>=2.9,<3.0  # If using PostgreSQL as the database
+# Add any other dependencies as needed
