@@ -12,6 +12,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 import csv
 import json
 from rest_framework.authtoken.models import Token
+from django.http import JsonResponse
 
 # ✅ Auth Views
 
@@ -143,13 +144,14 @@ def filter_tasks(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@parser_classes([MultiPartParser, FormParser])
+@parser_classes([MultiPartParser])
 def import_csv(request):
-    csv_file = request.FILES.get('file')
-    if not csv_file or not csv_file.name.endswith('.csv'):
-        return Response({'error': 'Upload a valid CSV file'}, status=400)
+    file = request.FILES.get('file')
 
-    decoded_file = csv_file.read().decode('utf-8').splitlines()
+    if not file.name.endswith('.csv'):
+        return JsonResponse({'error': 'Invalid file format'}, status=400)
+
+    decoded_file = file.read().decode('utf-8').splitlines()
     reader = csv.DictReader(decoded_file)
 
     for row in reader:
@@ -157,54 +159,99 @@ def import_csv(request):
             user=request.user,
             title=row.get('title', ''),
             description=row.get('description', ''),
-            due_date=row.get('due_date'),
-            completed=row.get('completed', '').lower() == 'true'
+            due_date=row.get('due_date') or None,
+            completed=row.get('completed', '').lower() in ['true', '1', 'yes']
         )
-    return Response({'message': 'Tasks imported successfully'})
+
+    return JsonResponse({'message': 'CSV imported successfully'})
+
+
+# @api_view(['GET'])
+# @permission_classes([IsAuthenticated])
+# def export_tasks(request, format):
+#     tasks = Task.objects.filter(user=request.user)
+
+#     if format == 'csv':
+#         response = HttpResponse(content_type='text/csv')
+#         response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
+#         writer = csv.writer(response)
+#         writer.writerow(['id', 'title', 'description', 'due_date', 'completed'])
+#         for task in tasks:
+#             writer.writerow([task.id, task.title, task.description, task.due_date, task.completed])
+#         return response
+
+#     elif format == 'json':
+#         from .serializers import TaskSerializer
+#         serializer = TaskSerializer(tasks, many=True)
+#         response = HttpResponse(
+#             json.dumps(serializer.data, indent=4),
+#             content_type='application/json'
+#         )
+#         response['Content-Disposition'] = 'attachment; filename="tasks.json"'
+#         return response
+
+#     elif format == 'text':
+#         content = ""
+#         for task in tasks:
+#             content += f"{task.title} - {task.description} - Completed: {task.completed}\n"
+#         response = HttpResponse(content, content_type='text/plain')
+#         response['Content-Disposition'] = 'attachment; filename="tasks.txt"'
+#         return response
+
+#     elif format == 'sql':
+#         content = ""
+#         for task in tasks:
+#             content += (
+#                 f"INSERT INTO tasks (title, description, due_date, completed, user_id) VALUES "
+#                 f"('{task.title}', '{task.description}', '{task.due_date}', {task.completed}, {task.user.id});\n"
+#             )
+#         response = HttpResponse(content, content_type='application/sql')
+#         response['Content-Disposition'] = 'attachment; filename="tasks.sql"'
+#         return response
+
+#     return HttpResponse('Unsupported export format', status=400)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_csv(request):
+    tasks = Task.objects.filter(user=request.user)
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
+    writer = csv.writer(response)
+    writer.writerow(['id', 'title', 'description', 'due_date', 'completed'])
+    for task in tasks:
+        writer.writerow([task.id, task.title, task.description, task.due_date, task.completed])
+    return response
 
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def export_tasks(request, format):
+def export_json(request):
     tasks = Task.objects.filter(user=request.user)
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
 
-    if format == 'csv':
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
-        writer = csv.writer(response)
-        writer.writerow(['id', 'title', 'description', 'due_date', 'completed'])
-        for task in tasks:
-            writer.writerow([task.id, task.title, task.description, task.due_date, task.completed])
-        return response
 
-    elif format == 'json':
-        from .serializers import TaskSerializer
-        serializer = TaskSerializer(tasks, many=True)
-        response = HttpResponse(
-            json.dumps(serializer.data, indent=4),
-            content_type='application/json'
-        )
-        response['Content-Disposition'] = 'attachment; filename="tasks.json"'
-        return response
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_text(request):
+    tasks = Task.objects.filter(user=request.user)
+    response = HttpResponse(content_type='text/plain')
+    response['Content-Disposition'] = 'attachment; filename="tasks.txt"'
+    for task in tasks:
+        response.write(f"{task.title} - {task.description} - Completed: {task.completed}\n")
+    return response
 
-    elif format == 'text':
-        content = ""
-        for task in tasks:
-            content += f"{task.title} - {task.description} - Completed: {task.completed}\n"
-        response = HttpResponse(content, content_type='text/plain')
-        response['Content-Disposition'] = 'attachment; filename="tasks.txt"'
-        return response
 
-    elif format == 'sql':
-        content = ""
-        for task in tasks:
-            content += (
-                f"INSERT INTO tasks (title, description, due_date, completed, user_id) VALUES "
-                f"('{task.title}', '{task.description}', '{task.due_date}', {task.completed}, {task.user.id});\n"
-            )
-        response = HttpResponse(content, content_type='application/sql')
-        response['Content-Disposition'] = 'attachment; filename="tasks.sql"'
-        return response
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_sql(request):
+    tasks = Task.objects.filter(user=request.user)
+    response = HttpResponse(content_type='text/sql')
+    response['Content-Disposition'] = 'attachment; filename="tasks.sql"'
+    for task in tasks:
+        sql = f"INSERT INTO tasks (title, description, due_date, completed) VALUES ('{task.title}', '{task.description}', '{task.due_date}', {task.completed});\n"
+        response.write(sql)
+    return response
 
-    return HttpResponse('Unsupported export format', status=400)
 

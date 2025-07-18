@@ -15,5 +15,9 @@ urlpatterns = [
     path('filter/', views.filter_tasks, name='filter_tasks'),
 
     path('import-csv/', views.import_csv, name='import_csv'),
-    path('export/<str:format>/', views.export_tasks, name='export_tasks'),
+    # path('export/<str:format>/', views.export_tasks, name='export_tasks'),
+    path('export/csv/', views.export_csv, name='export_csv'),
+    path('export/json/', views.export_json, name='export_json'),
+    path('export/text/', views.export_text, name='export_text'),
+    path('export/sql/', views.export_sql, name='export_sql'),
 ]
