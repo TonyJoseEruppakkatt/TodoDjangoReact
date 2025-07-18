@@ -67,8 +67,24 @@ def add_task(request):
 @permission_classes([IsAuthenticated])
 def list_tasks(request):
     tasks = Task.objects.filter(user=request.user).order_by('-id')
+
+    # Handle search
+    search_query = request.GET.get('search')
+    if search_query:
+        tasks = tasks.filter(title__icontains=search_query)  # Search by title only
+        # You can also do: filter(Q(title__icontains=...) | Q(description__icontains=...))
+
+    # Handle filter status
+    completed_param = request.GET.get('completed')
+    if completed_param is not None:
+        if completed_param.lower() == 'true':
+            tasks = tasks.filter(completed=True)
+        elif completed_param.lower() == 'false':
+            tasks = tasks.filter(completed=False)
+
     serializer = TaskSerializer(tasks, many=True)
     return Response(serializer.data)
+
 
 
 @api_view(['GET'])
