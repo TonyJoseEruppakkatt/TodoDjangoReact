@@ -10,6 +10,7 @@ from .serializers import TaskSerializer
 from django.http import HttpResponse
 from rest_framework.parsers import MultiPartParser, FormParser
 import csv
+import json
 from rest_framework.authtoken.models import Token
 
 # ✅ Auth Views
@@ -17,17 +18,16 @@ from rest_framework.authtoken.models import Token
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def signup(request):
-    email = request.data.get('email')
     username = request.data.get('username')
     password = request.data.get('password')
 
-    if not all([email, username, password]):
-        return Response({'error': 'All fields are required'}, status=400)
+    if not all([username, password]):
+        return Response({'error': 'Username and password are required'}, status=400)
 
     if User.objects.filter(username=username).exists():
         return Response({'error': 'Username already exists'}, status=400)
 
-    User.objects.create_user(username=username, email=email, password=password)
+    User.objects.create_user(username=username, password=password)
     return Response({'message': 'User created successfully'})
 
 
@@ -63,18 +63,19 @@ def add_task(request):
     return Response(serializer.errors, status=400)
 
 
+from rest_framework.pagination import PageNumberPagination
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_tasks(request):
     tasks = Task.objects.filter(user=request.user).order_by('-id')
 
-    # Handle search
+    # ✅ Handle search
     search_query = request.GET.get('search')
     if search_query:
-        tasks = tasks.filter(title__icontains=search_query)  # Search by title only
-        # You can also do: filter(Q(title__icontains=...) | Q(description__icontains=...))
+        tasks = tasks.filter(title__icontains=search_query)  # or description__icontains
 
-    # Handle filter status
+    # ✅ Handle filtering
     completed_param = request.GET.get('completed')
     if completed_param is not None:
         if completed_param.lower() == 'true':
@@ -82,8 +83,19 @@ def list_tasks(request):
         elif completed_param.lower() == 'false':
             tasks = tasks.filter(completed=False)
 
-    serializer = TaskSerializer(tasks, many=True)
-    return Response(serializer.data)
+    # ✅ Pagination
+    page = int(request.GET.get('page', 1))
+    page_size = 5
+    start = (page - 1) * page_size
+    end = start + page_size
+    paginated_tasks = tasks[start:end]
+
+    serializer = TaskSerializer(paginated_tasks, many=True)
+    return Response({
+        'count': tasks.count(),
+        'results': serializer.data
+    })
+
 
 
 
@@ -161,9 +173,38 @@ def export_tasks(request, format):
         response['Content-Disposition'] = 'attachment; filename="tasks.csv"'
         writer = csv.writer(response)
         writer.writerow(['id', 'title', 'description', 'due_date', 'completed'])
-
         for task in tasks:
             writer.writerow([task.id, task.title, task.description, task.due_date, task.completed])
         return response
 
-    return Response({'error': 'Unsupported format'}, status=400)
+    elif format == 'json':
+        from .serializers import TaskSerializer
+        serializer = TaskSerializer(tasks, many=True)
+        response = HttpResponse(
+            json.dumps(serializer.data, indent=4),
+            content_type='application/json'
+        )
+        response['Content-Disposition'] = 'attachment; filename="tasks.json"'
+        return response
+
+    elif format == 'text':
+        content = ""
+        for task in tasks:
+            content += f"{task.title} - {task.description} - Completed: {task.completed}\n"
+        response = HttpResponse(content, content_type='text/plain')
+        response['Content-Disposition'] = 'attachment; filename="tasks.txt"'
+        return response
+
+    elif format == 'sql':
+        content = ""
+        for task in tasks:
+            content += (
+                f"INSERT INTO tasks (title, description, due_date, completed, user_id) VALUES "
+                f"('{task.title}', '{task.description}', '{task.due_date}', {task.completed}, {task.user.id});\n"
+            )
+        response = HttpResponse(content, content_type='application/sql')
+        response['Content-Disposition'] = 'attachment; filename="tasks.sql"'
+        return response
+
+    return HttpResponse('Unsupported export format', status=400)
+
