@@ -69,34 +69,23 @@ from rest_framework.pagination import PageNumberPagination
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_tasks(request):
-    tasks = Task.objects.filter(user=request.user).order_by('-id')
+    user = request.user
+    search = request.GET.get('search', '')
+    completed = request.GET.get('completed', None)
 
-    # ✅ Handle search
-    search_query = request.GET.get('search')
-    if search_query:
-        tasks = tasks.filter(title__icontains=search_query)  # or description__icontains
+    tasks = Task.objects.filter(user=user).order_by('due_date')
 
-    # ✅ Handle filtering
-    completed_param = request.GET.get('completed')
-    if completed_param is not None:
-        if completed_param.lower() == 'true':
-            tasks = tasks.filter(completed=True)
-        elif completed_param.lower() == 'false':
-            tasks = tasks.filter(completed=False)
+    if search:
+        tasks = tasks.filter(title__icontains=search)
 
-    # ✅ Pagination
-    page = int(request.GET.get('page', 1))
-    page_size = 5
-    start = (page - 1) * page_size
-    end = start + page_size
-    paginated_tasks = tasks[start:end]
+    if completed is not None:
+        tasks = tasks.filter(completed=completed in ['true', 'True', '1'])
 
-    serializer = TaskSerializer(paginated_tasks, many=True)
-    return Response({
-        'count': tasks.count(),
-        'results': serializer.data
-    })
-
+    paginator = PageNumberPagination()
+    paginator.page_size = 5
+    result_page = paginator.paginate_queryset(tasks, request)
+    serializer = TaskSerializer(result_page, many=True)
+    return paginator.get_paginated_response(serializer.data)
 
 
 
