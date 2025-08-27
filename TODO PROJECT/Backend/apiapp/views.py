@@ -1,3 +1,4 @@
+
 from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -13,6 +14,12 @@ import csv
 import json
 from rest_framework.authtoken.models import Token
 from django.http import JsonResponse
+from django.utils import timezone
+from django.utils.timezone import now
+from .models import UserActivity
+from .models import UserProfile
+from rest_framework.pagination import PageNumberPagination
+
 
 # ✅ Auth Views
 
@@ -32,18 +39,27 @@ def signup(request):
     return Response({'message': 'User created successfully'})
 
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-def login_view(request):
-    username = request.data.get('username')
-    password = request.data.get('password')
-    user = authenticate(username=username, password=password)
-    if user:
-        login(request, user)
-        token, created = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key})
-    return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
 
+@api_view(["POST"])
+def login_view(request):
+    username = request.data.get("username")
+    password = request.data.get("password")
+
+    user = authenticate(username=username, password=password)
+    if user is None:
+        return Response({"error": "Invalid credentials"}, status=400)
+
+    # ✅ Ensure UserProfile exists (backfill if missing)
+    profile, created = UserProfile.objects.get_or_create(user=user)
+
+    # Create or get token
+    token, _ = Token.objects.get_or_create(user=user)
+
+    return Response({
+        "token": token.key,
+        "username": user.username,
+        "is_premium": profile.is_premium   # ✅ safe access
+    })
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -53,18 +69,28 @@ def logout_view(request):
 
 
 # ✅ CRUD Task Views
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_task(request):
+    user = request.user
+    profile = user.userprofile  
+
+    today = now().date()
+    today_tasks = Task.objects.filter(user=user, due_date__date=today).count()
+
+    if not profile.is_premium and today_tasks >= 10:
+        return Response({"error": "Non-premium users can only add 10 tasks per day."}, status=403)
+
     serializer = TaskSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save(user=request.user)
+        task = serializer.save(user=user)
+
+        # ✅ log activity
+        UserActivity.objects.create(user=user, action="ADD")
+
         return Response(serializer.data, status=201)
+
     return Response(serializer.errors, status=400)
-
-
-from rest_framework.pagination import PageNumberPagination
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -145,12 +171,12 @@ def import_csv(request):
 
     for row in reader:
         Task.objects.create(
-            user=request.user,
-            title=row.get('title', ''),
-            description=row.get('description', ''),
-            due_date=row.get('due_date') or None,
-            completed=row.get('completed', '').lower() in ['true', '1', 'yes']
-        )
+        user=request.user,
+        title=row.get('title', ''),
+        description=row.get('description', ''),
+        due_date=row.get('due_date') or timezone.now().date(),  # fallback default
+        completed=row.get('completed', '').lower() in ['true', '1', 'yes']
+    )
 
     return JsonResponse({'message': 'CSV imported successfully'})
 
@@ -244,3 +270,44 @@ def export_sql(request):
     return response
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin(request):
+    user = request.user
+    return Response({
+        'username': user.username,
+        'is_staff': user.is_staff,
+        'is_superuser': user.is_superuser,
+        'email': user.email,
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_dashboard(request):
+    user = request.user
+    if not user.is_staff and not user.is_superuser:
+        return Response({'error': 'Access denied. Admins only.'}, status=403)
+
+    total_users = User.objects.count()
+    total_tasks = Task.objects.count()
+    completed_tasks = Task.objects.filter(completed=True).count()
+    pending_tasks = Task.objects.filter(completed=False).count()
+
+    return Response({
+        'admin': user.username,
+        'total_users': total_users,
+        'total_tasks': total_tasks,
+        'completed_tasks': completed_tasks,
+        'pending_tasks': pending_tasks,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_all_tasks(request):
+    if not request.user.is_staff:
+        return Response({'error': 'Admins only'}, status=403)
+
+    tasks = Task.objects.all().order_by('-due_date')
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
